@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Artist-Collector CRM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+</style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+/* ----------------------------------------------------------------------- *
+ *  Lightweight inline icon set (Lucide-style stroke icons, hand-drawn so   *
+ *  the prototype has zero external module dependencies).                   *
+ * ----------------------------------------------------------------------- */
+const Icon = ({ children, className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+       strokeLinecap="round" strokeLinejoin="round" className={className || "w-5 h-5"}>
+    {children}
+  </svg>
+);
+const IconDashboard = (p) => <Icon {...p}><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></Icon>;
+const IconUsers = (p) => <Icon {...p}><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="8.5" r="2.6"/><path d="M15 15.2c2.6.3 4.5 2 4.8 4.3"/></Icon>;
+const IconPackage = (p) => <Icon {...p}><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/></Icon>;
+const IconReceipt = (p) => <Icon {...p}><path d="M6 3h12v18l-2.5-1.5L13 21l-2.5-1.5L8 21l-2-1.5z"/><path d="M9 8h6M9 12h6M9 16h3"/></Icon>;
+const IconPlus = (p) => <Icon {...p}><path d="M12 5v14M5 12h14"/></Icon>;
+const IconFilter = (p) => <Icon {...p}><path d="M4 5h16l-6 8v5l-4 2v-7z"/></Icon>;
+const IconAlert = (p) => <Icon {...p}><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m10.3 3.6-8 14A1.7 1.7 0 0 0 3.7 20h16.6a1.7 1.7 0 0 0 1.4-2.4l-8-14a1.7 1.7 0 0 0-3 0z"/></Icon>;
+const IconCheck = (p) => <Icon {...p}><path d="m5 13 4 4 10-10"/></Icon>;
+
+/* ----------------------------------------------------------------------- *
+ *  Formatting helpers                                                       *
+ * ----------------------------------------------------------------------- */
+const fmtMoney = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const fmtDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const daysSince = (iso) => Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400000);
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/* ----------------------------------------------------------------------- *
+ *  Mock "database" — seed data for Contacts, Artworks, and Transactions    *
+ * ----------------------------------------------------------------------- */
+const initialContacts = [
+  { id: "c1", fullName: "Maya Chen",        email: "maya.chen@email.com",     phone: "(410) 555-0142", tier: "VIP",  lastContactDate: "2026-02-10", totalLifetimeValue: 8400 },
+  { id: "c2", fullName: "Devon Brooks",     email: "devon.brooks@email.com",  phone: "(443) 555-0199", tier: "Warm", lastContactDate: "2026-03-22", totalLifetimeValue: 2200 },
+  { id: "c3", fullName: "Priya Anand",      email: "priya.anand@email.com",   phone: "(410) 555-0110", tier: "VIP",  lastContactDate: "2026-01-05", totalLifetimeValue: 12600 },
+  { id: "c4", fullName: "Jordan Lee",       email: "jordan.lee@email.com",    phone: "(667) 555-0188", tier: "Cold", lastContactDate: "2025-11-02", totalLifetimeValue: 600 },
+  { id: "c5", fullName: "Sasha Romero",     email: "sasha.romero@email.com",  phone: "(410) 555-0173", tier: "Warm", lastContactDate: "2025-12-18", totalLifetimeValue: 1500 },
+  { id: "c6", fullName: "Theo Whitfield",   email: "theo.whitfield@email.com",phone: "(443) 555-0205", tier: "VIP",  lastContactDate: "2026-05-20", totalLifetimeValue: 5400 },
+];
+
+const initialArtworks = [
+  { id: "a1", title: "Harbor Light No. 3", medium: "Oil on canvas",         dimensions: '24" x 36"', status: "In Studio",    retailPrice: 1800 },
+  { id: "a2", title: "Quiet Static",       medium: "Mixed media on panel",  dimensions: '18" x 24"', status: "At Exhibition",retailPrice: 1200 },
+  { id: "a3", title: "Threshold",          medium: "Acrylic on canvas",     dimensions: '30" x 40"', status: "Sold",         retailPrice: 2400 },
+  { id: "a4", title: "Night Bloom",        medium: "Watercolor on paper",   dimensions: '11" x 14"', status: "In Studio",    retailPrice: 650 },
+  { id: "a5", title: "Concrete Hymn",      medium: "Oil on canvas",         dimensions: '36" x 48"', status: "At Exhibition",retailPrice: 3200 },
+  { id: "a6", title: "Salt & Static",      medium: "Ink and gouache",       dimensions: '16" x 20"', status: "In Studio",    retailPrice: 900 },
+  { id: "a7", title: "Afterimage IV",      medium: "Acrylic on canvas",     dimensions: '24" x 24"', status: "Sold",         retailPrice: 1500 },
+];
+
+const initialTransactions = [
+  { id: "INV-1001", contactId: "c3", artworkId: "a3", saleDate: "2026-03-15", finalSalePrice: 2400 },
+  { id: "INV-1002", contactId: "c1", artworkId: "a7", saleDate: "2026-04-28", finalSalePrice: 1500 },
+];
+
+/* ----------------------------------------------------------------------- *
+ *  Badges                                                                   *
+ * ----------------------------------------------------------------------- */
+const TierBadge = ({ tier }) => {
+  const styles = {
+    VIP:  "bg-amber-100 text-amber-800 border-amber-200",
+    Warm: "bg-blue-100 text-blue-700 border-blue-200",
+    Cold: "bg-stone-100 text-stone-500 border-stone-200",
+  };
+  return <span className={"inline-block text-xs font-semibold px-2.5 py-1 rounded-full border " + styles[tier]}>{tier}</span>;
+};
+
+const StatusBadge = ({ status }) => {
+  const styles = {
+    "In Studio":     "bg-emerald-100 text-emerald-700 border-emerald-200",
+    "At Exhibition": "bg-amber-100 text-amber-700 border-amber-200",
+    "Sold":          "bg-rose-100 text-rose-700 border-rose-200",
+  };
+  return <span className={"inline-block text-xs font-semibold px-2.5 py-1 rounded-full border " + styles[status]}>{status}</span>;
+};
+
+/* ----------------------------------------------------------------------- *
+ *  Sidebar navigation                                                       *
+ * ----------------------------------------------------------------------- */
+function Sidebar({ active, setActive }) {
+  const items = [
+    { key: "dashboard", label: "Dashboard", icon: IconDashboard },
+    { key: "contacts",  label: "Contacts",  icon: IconUsers },
+    { key: "inventory", label: "Inventory", icon: IconPackage },
+    { key: "sales",     label: "Sales",     icon: IconReceipt },
+  ];
+  return (
+    <aside className="w-full lg:w-60 lg:min-h-screen bg-white border-b lg:border-b-0 lg:border-r border-stone-200 px-4 py-5 lg:py-8 flex lg:flex-col gap-2">
+      <div className="hidden lg:block px-2 mb-6">
+        <h1 className="text-lg font-bold tracking-tight text-stone-900">Studio CRM</h1>
+        <p className="text-xs text-stone-400 mt-0.5">Collector relationships, simplified</p>
+      </div>
+      <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible w-full">
+        {items.map(({ key, label, icon: ItemIcon }) => (
+          <button
+            key={key}
+            onClick={() => setActive(key)}
+            className={
+              "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors " +
+              (active === key ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100")
+            }
+          >
+            <ItemIcon className="w-4 h-4 shrink-0" />
+            {label}
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  Reusable metric card                                                     *
+ * ----------------------------------------------------------------------- */
+function MetricCard({ icon: CardIcon, label, value, accent }) {
+  return (
+    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 flex items-start gap-4">
+      <div className={"rounded-xl p-2.5 " + (accent || "bg-stone-100 text-stone-600")}>
+        <CardIcon className="w-5 h-5" />
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{label}</p>
+        <p className="text-2xl font-bold text-stone-900 mt-0.5">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  A. DASHBOARD VIEW                                                        *
+ * ----------------------------------------------------------------------- */
+function DashboardView({ contacts, artworks }) {
+  const totalRevenue = useMemo(() => contacts.reduce((sum, c) => sum + c.totalLifetimeValue, 0), [contacts]);
+  const vipCount = useMemo(() => contacts.filter((c) => c.tier === "VIP").length, [contacts]);
+  const availableInventory = useMemo(() => artworks.filter((a) => a.status === "In Studio").length, [artworks]);
+
+  // Collectors worth a check-in: VIP or Warm, and it's been 60+ days since last contact
+  const needsFollowUp = useMemo(
+    () => contacts
+      .filter((c) => (c.tier === "VIP" || c.tier === "Warm") && daysSince(c.lastContactDate) > 60)
+      .sort((a, b) => daysSince(b.lastContactDate) - daysSince(a.lastContactDate)),
+    [contacts]
+  );
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-stone-900">Dashboard</h2>
+        <p className="text-sm text-stone-400 mt-0.5">A quick read on your collector relationships and studio inventory.</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <MetricCard icon={IconReceipt} label="Total Lifetime Revenue" value={fmtMoney(totalRevenue)} accent="bg-emerald-100 text-emerald-700" />
+        <MetricCard icon={IconUsers} label="VIP Collectors" value={vipCount} accent="bg-amber-100 text-amber-700" />
+        <MetricCard icon={IconPackage} label="Available Inventory" value={availableInventory + " in studio"} accent="bg-blue-100 text-blue-700" />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <IconAlert className="w-4 h-4 text-amber-500" />
+          <h3 className="font-semibold text-stone-800">Needs Follow-Up</h3>
+        </div>
+        <p className="text-xs text-stone-400 mb-4">VIP and Warm collectors you haven't reached out to in over 60 days.</p>
+        {needsFollowUp.length === 0 ? (
+          <p className="text-sm text-stone-400 italic">You're all caught up — no overdue check-ins right now.</p>
+        ) : (
+          <ul className="divide-y divide-stone-100">
+            {needsFollowUp.map((c) => (
+              <li key={c.id} className="py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <TierBadge tier={c.tier} />
+                  <div>
+                    <p className="text-sm font-semibold text-stone-800">{c.fullName}</p>
+                    <p className="text-xs text-stone-400">{c.email}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500 whitespace-nowrap">
+                  Last contact {fmtDate(c.lastContactDate)} · <span className="font-semibold text-rose-500">{daysSince(c.lastContactDate)} days ago</span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  B. CONTACTS VIEW                                                         *
+ * ----------------------------------------------------------------------- */
+function ContactsView({ contacts, addContact }) {
+  const [tierFilter, setTierFilter] = useState("All");
+  const [form, setForm] = useState({ fullName: "", email: "", tier: "Warm" });
+
+  const filtered = useMemo(
+    () => (tierFilter === "All" ? contacts : contacts.filter((c) => c.tier === tierFilter)),
+    [contacts, tierFilter]
+  );
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.fullName.trim() || !form.email.trim()) return;
+    addContact({
+      fullName: form.fullName.trim(),
+      email: form.email.trim(),
+      phone: "—",
+      tier: form.tier,
+      lastContactDate: todayISO(),
+      totalLifetimeValue: 0,
+    });
+    setForm({ fullName: "", email: "", tier: "Warm" });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-stone-900">Contacts</h2>
+          <p className="text-sm text-stone-400 mt-0.5">Your collector relationships, at a glance.</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <IconFilter className="w-4 h-4 text-stone-400" />
+          <span className="text-stone-500">Filter by tier</span>
+          <select
+            value={tierFilter}
+            onChange={(e) => setTierFilter(e.target.value)}
+            className="rounded-lg border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+          >
+            <option>All</option>
+            <option>VIP</option>
+            <option>Warm</option>
+            <option>Cold</option>
+          </select>
+        </label>
+      </div>
+
+      {/* Add Contact form */}
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+        <h3 className="font-semibold text-stone-800 mb-3 flex items-center gap-2"><IconPlus className="w-4 h-4" /> Add Contact</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <input
+            type="text" placeholder="Full name" value={form.fullName}
+            onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300 sm:col-span-2"
+          />
+          <input
+            type="email" placeholder="Email address" value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+          />
+          <select
+            value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+          >
+            <option>VIP</option>
+            <option>Warm</option>
+            <option>Cold</option>
+          </select>
+        </div>
+        <button type="submit" className="mt-3 inline-flex items-center gap-1.5 bg-stone-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-stone-700 transition-colors">
+          <IconPlus className="w-4 h-4" /> Add to collector list
+        </button>
+      </form>
+
+      {/* Contacts table */}
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-stone-400 border-b border-stone-100">
+              <th className="px-5 py-3 font-semibold">Name</th>
+              <th className="px-5 py-3 font-semibold">Contact Info</th>
+              <th className="px-5 py-3 font-semibold">Tier</th>
+              <th className="px-5 py-3 font-semibold">Last Contact</th>
+              <th className="px-5 py-3 font-semibold text-right">Lifetime Value</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {filtered.map((c) => (
+              <tr key={c.id} className="hover:bg-stone-50">
+                <td className="px-5 py-3 font-semibold text-stone-800 whitespace-nowrap">{c.fullName}</td>
+                <td className="px-5 py-3 text-stone-500">
+                  <div>{c.email}</div>
+                  <div className="text-xs text-stone-400">{c.phone}</div>
+                </td>
+                <td className="px-5 py-3"><TierBadge tier={c.tier} /></td>
+                <td className="px-5 py-3 text-stone-500 whitespace-nowrap">{fmtDate(c.lastContactDate)}</td>
+                <td className="px-5 py-3 text-right font-semibold text-stone-800 whitespace-nowrap">{fmtMoney(c.totalLifetimeValue)}</td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan="5" className="px-5 py-6 text-center text-stone-400 italic">No collectors match this filter.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  C. INVENTORY VIEW                                                        *
+ * ----------------------------------------------------------------------- */
+function InventoryView({ artworks, addArtwork }) {
+  // Adds a quick placeholder piece — a real app would open a full form/upload flow.
+  const handleAdd = () => {
+    const n = artworks.length + 1;
+    addArtwork({
+      title: `Untitled Study #${n}`,
+      medium: "Mixed media on paper",
+      dimensions: '12" x 12"',
+      status: "In Studio",
+      retailPrice: 500,
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-stone-900">Inventory</h2>
+          <p className="text-sm text-stone-400 mt-0.5">Every piece you've made, and where it stands.</p>
+        </div>
+        <button onClick={handleAdd} className="inline-flex items-center gap-1.5 bg-stone-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-stone-700 transition-colors">
+          <IconPlus className="w-4 h-4" /> Add Artwork
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {artworks.map((a) => (
+          <div key={a.id} className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+            {/* Placeholder "image" */}
+            <div className="h-40 bg-stone-100 flex items-center justify-center">
+              <IconPackage className="w-8 h-8 text-stone-300" />
+            </div>
+            <div className="p-4 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-semibold text-stone-800 leading-snug">{a.title}</h3>
+                <StatusBadge status={a.status} />
+              </div>
+              <p className="text-xs text-stone-400">{a.medium} · {a.dimensions}</p>
+              <p className="text-sm font-semibold text-stone-700">{fmtMoney(a.retailPrice)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  D. SALES / TRANSACTIONS VIEW                                             *
+ * ----------------------------------------------------------------------- */
+function SalesView({ contacts, artworks, transactions, recordSale }) {
+  const availableArtworks = useMemo(() => artworks.filter((a) => a.status === "In Studio"), [artworks]);
+  const [contactId, setContactId] = useState("");
+  const [artworkId, setArtworkId] = useState("");
+  const [price, setPrice] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+
+  const lookupContact = (id) => contacts.find((c) => c.id === id);
+  const lookupArtwork = (id) => artworks.find((a) => a.id === id);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const finalPrice = Number(price);
+    if (!contactId || !artworkId || !finalPrice || finalPrice <= 0) return;
+
+    const buyer = lookupContact(contactId);
+    const piece = lookupArtwork(artworkId);
+    recordSale({ contactId, artworkId, finalSalePrice: finalPrice });
+
+    setConfirmation(`Recorded: "${piece.title}" sold to ${buyer.fullName} for ${fmtMoney(finalPrice)}.`);
+    setContactId(""); setArtworkId(""); setPrice("");
+    setTimeout(() => setConfirmation(""), 4000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-stone-900">Sales</h2>
+        <p className="text-sm text-stone-400 mt-0.5">Your sales ledger — and a quick way to log a new one.</p>
+      </div>
+
+      {/* Enter New Sale */}
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+        <h3 className="font-semibold text-stone-800 mb-3 flex items-center gap-2"><IconPlus className="w-4 h-4" /> Enter New Sale</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <select value={contactId} onChange={(e) => setContactId(e.target.value)}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300">
+            <option value="">Select collector…</option>
+            {contacts.map((c) => <option key={c.id} value={c.id}>{c.fullName} ({c.tier})</option>)}
+          </select>
+          <select value={artworkId} onChange={(e) => setArtworkId(e.target.value)}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300 sm:col-span-2">
+            <option value="">Select artwork (in studio only)…</option>
+            {availableArtworks.map((a) => <option key={a.id} value={a.id}>{a.title} — list {fmtMoney(a.retailPrice)}</option>)}
+          </select>
+          <input
+            type="number" min="1" placeholder="Final sale price ($)" value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+          />
+        </div>
+        <button type="submit" className="mt-3 inline-flex items-center gap-1.5 bg-stone-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-stone-700 transition-colors">
+          <IconCheck className="w-4 h-4" /> Record sale
+        </button>
+        {availableArtworks.length === 0 && (
+          <p className="text-xs text-amber-600 mt-2">Nothing left in studio to sell — add new inventory first.</p>
+        )}
+        {confirmation && (
+          <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><IconCheck className="w-4 h-4" /> {confirmation}</p>
+        )}
+      </form>
+
+      {/* Ledger table */}
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-stone-400 border-b border-stone-100">
+              <th className="px-5 py-3 font-semibold">Invoice ID</th>
+              <th className="px-5 py-3 font-semibold">Buyer</th>
+              <th className="px-5 py-3 font-semibold">Artwork</th>
+              <th className="px-5 py-3 font-semibold">Sale Date</th>
+              <th className="px-5 py-3 font-semibold text-right">Final Price</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {[...transactions].reverse().map((t) => {
+              const buyer = lookupContact(t.contactId);
+              const piece = lookupArtwork(t.artworkId);
+              return (
+                <tr key={t.id} className="hover:bg-stone-50">
+                  <td className="px-5 py-3 font-mono text-xs text-stone-500 whitespace-nowrap">{t.id}</td>
+                  <td className="px-5 py-3 font-semibold text-stone-800 whitespace-nowrap">{buyer ? buyer.fullName : "—"}</td>
+                  <td className="px-5 py-3 text-stone-600 whitespace-nowrap">{piece ? piece.title : "—"}</td>
+                  <td className="px-5 py-3 text-stone-500 whitespace-nowrap">{fmtDate(t.saleDate)}</td>
+                  <td className="px-5 py-3 text-right font-semibold text-stone-800 whitespace-nowrap">{fmtMoney(t.finalSalePrice)}</td>
+                </tr>
+              );
+            })}
+            {transactions.length === 0 && (
+              <tr><td colSpan="5" className="px-5 py-6 text-center text-stone-400 italic">No sales recorded yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- *
+ *  ROOT APP — owns all "database" state and wires views together           *
+ * ----------------------------------------------------------------------- */
+function App() {
+  const [view, setView] = useState("dashboard");
+  const [contacts, setContacts] = useState(initialContacts);
+  const [artworks, setArtworks] = useState(initialArtworks);
+  const [transactions, setTransactions] = useState(initialTransactions);
+
+  const addContact = (newContact) => {
+    setContacts((prev) => [...prev, { id: "c" + (prev.length + 1) + "_" + Date.now(), ...newContact }]);
+  };
+
+  const addArtwork = (newArtwork) => {
+    setArtworks((prev) => [...prev, { id: "a" + (prev.length + 1) + "_" + Date.now(), ...newArtwork }]);
+  };
+
+  // Recording a sale touches three tables at once: it closes the loop between
+  // a collector, a piece of inventory, and the ledger — exactly like a real CRM.
+  const recordSale = ({ contactId, artworkId, finalSalePrice }) => {
+    const invoiceId = "INV-" + (1000 + transactions.length + 1);
+
+    setTransactions((prev) => [...prev, { id: invoiceId, contactId, artworkId, saleDate: todayISO(), finalSalePrice }]);
+
+    setArtworks((prev) => prev.map((a) => (a.id === artworkId ? { ...a, status: "Sold" } : a)));
+
+    setContacts((prev) => prev.map((c) =>
+      c.id === contactId
+        ? { ...c, totalLifetimeValue: c.totalLifetimeValue + finalSalePrice, lastContactDate: todayISO() }
+        : c
+    ));
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      <Sidebar active={view} setActive={setView} />
+      <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-10 max-w-6xl mx-auto w-full">
+        {view === "dashboard" && <DashboardView contacts={contacts} artworks={artworks} />}
+        {view === "contacts"  && <ContactsView contacts={contacts} addContact={addContact} />}
+        {view === "inventory" && <InventoryView artworks={artworks} addArtwork={addArtwork} />}
+        {view === "sales"     && <SalesView contacts={contacts} artworks={artworks} transactions={transactions} recordSale={recordSale} />}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
