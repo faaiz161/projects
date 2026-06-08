@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Exhibition Financial Planner & Sensitivity Calculator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  input[type="range"] { accent-color: #4f46e5; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+const fmtMoney = (n) => {
+  if (!isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+};
+const fmtUnits = (n) => (!isFinite(n) ? "—" : Math.round(n).toLocaleString("en-US"));
+
+function ceilSafe(numerator, denominator) {
+  if (denominator <= 0) return Infinity;
+  return Math.ceil(numerator / denominator);
+}
+
+function FieldGroup({ label, sub, value, onChange, min, max, step, prefix }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <label className="text-sm font-semibold text-slate-700">{label}</label>
+        <div className="flex items-center gap-1">
+          {prefix && <span className="text-slate-400 text-sm">{prefix}</span>}
+          <input
+            type="number"
+            className="w-24 text-right text-sm font-semibold rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => onChange(Number(e.target.value))}
+          />
+        </div>
+      </div>
+      <input
+        type="range"
+        className="w-full"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function MetricCard({ title, value, sub, accent }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col gap-1">
+      <span className={"text-xs font-semibold uppercase tracking-wide " + (accent || "text-indigo-500")}>{title}</span>
+      <span className="text-2xl font-bold text-slate-800">{value}</span>
+      <span className="text-xs text-slate-400 leading-snug">{sub}</span>
+    </div>
+  );
+}
+
+function cellStyles(profit, targetProfit) {
+  if (profit < -0.5) return "bg-red-100 text-red-700 border border-red-200";
+  if (Math.abs(profit) <= 0.5) return "bg-slate-100 text-slate-600 border border-slate-300";
+  if (profit >= targetProfit) return "bg-green-700 text-white border border-green-800 font-semibold";
+  return "bg-green-100 text-green-700 border border-green-200";
+}
+
+function App() {
+  const [fixedCosts, setFixedCosts] = useState(1500);
+  const [variableCost, setVariableCost] = useState(150);
+  const [targetProfit, setTargetProfit] = useState(2000);
+  const [avgPrice, setAvgPrice] = useState(800);
+  const [salesVolume, setSalesVolume] = useState(5);
+
+  const metrics = useMemo(() => {
+    const margin = avgPrice - variableCost;
+    const totalUpfrontRisk = fixedCosts;
+    const breakEvenVolume = ceilSafe(fixedCosts, margin);
+    const targetProfitVolume = ceilSafe(fixedCosts + targetProfit, margin);
+    const minBreakEvenPrice = salesVolume > 0 ? (fixedCosts / salesVolume) + variableCost : Infinity;
+    const targetProfitPrice = salesVolume > 0 ? ((fixedCosts + targetProfit) / salesVolume) + variableCost : Infinity;
+    const projectedNetProfit = (salesVolume * avgPrice) - fixedCosts - (salesVolume * variableCost);
+    return { totalUpfrontRisk, breakEvenVolume, targetProfitVolume, minBreakEvenPrice, targetProfitPrice, projectedNetProfit };
+  }, [fixedCosts, variableCost, targetProfit, avgPrice, salesVolume]);
+
+  const sensitivity = useMemo(() => {
+    const priceMultipliers = [0.8, 0.9, 1.0, 1.1, 1.2];
+    const rows = priceMultipliers.map((m) => Math.round(avgPrice * m));
+    const volOffsets = [-2, -1, 0, 1, 2];
+    const cols = volOffsets.map((o) => Math.max(0, salesVolume + o));
+    const grid = rows.map((price) =>
+      cols.map((vol) => (price * vol) - fixedCosts - (vol * variableCost))
+    );
+    return { rows, cols, grid };
+  }, [avgPrice, salesVolume, fixedCosts, variableCost, targetProfit]);
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <header className="space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Exhibition Financial Planner</h1>
+        <p className="text-slate-500 text-sm sm:text-base">
+          A plain-language calculator for solo visual artists planning a show — see what it costs, what you need to sell, and how sensitive your profit is to price and volume.
+        </p>
+      </header>
+
+      <section>
+        <h2 className="text-lg font-semibold text-slate-700 mb-3">Your Numbers</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <FieldGroup
+            label="Total Fixed Costs"
+            sub="Venue rental, marketing, opening reception — costs you pay no matter what sells."
+            value={fixedCosts}
+            onChange={setFixedCosts}
+            min={0} max={20000} step={50} prefix="$"
+          />
+          <FieldGroup
+            label="Variable Cost per Piece"
+            sub="Canvas, framing, transaction fees — the cost tied to each artwork sold."
+            value={variableCost}
+            onChange={setVariableCost}
+            min={0} max={2000} step={10} prefix="$"
+          />
+          <FieldGroup
+            label="Target Profit Goal"
+            sub="The amount you'd like to walk away with after costs."
+            value={targetProfit}
+            onChange={setTargetProfit}
+            min={0} max={50000} step={50} prefix="$"
+          />
+          <FieldGroup
+            label="Expected Average Price"
+            sub="What you think each piece will sell for, on average."
+            value={avgPrice}
+            onChange={setAvgPrice}
+            min={1} max={20000} step={10} prefix="$"
+          />
+          <FieldGroup
+            label="Expected Sales Volume"
+            sub="How many pieces you realistically expect to sell."
+            value={salesVolume}
+            onChange={setSalesVolume}
+            min={0} max={100} step={1}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-slate-700 mb-3">What This Means For You</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <MetricCard
+            title="Total Upfront Risk"
+            value={fmtMoney(metrics.totalUpfrontRisk)}
+            sub="The amount you stand to lose if nothing sells — your fixed costs on the line."
+            accent="text-rose-500"
+          />
+          <MetricCard
+            title="Break-Even Volume"
+            value={metrics.breakEvenVolume === Infinity ? "Not possible at this price" : `${fmtUnits(metrics.breakEvenVolume)} pieces`}
+            sub="How many pieces you must sell to not lose money."
+          />
+          <MetricCard
+            title="Target Profit Volume"
+            value={metrics.targetProfitVolume === Infinity ? "Not possible at this price" : `${fmtUnits(metrics.targetProfitVolume)} pieces`}
+            sub="How many pieces you need to sell to hit your profit goal."
+          />
+          <MetricCard
+            title="Minimum Break-Even Price"
+            value={fmtMoney(metrics.minBreakEvenPrice)}
+            sub="The average price per piece you'd need (at your expected volume) just to cover costs."
+          />
+          <MetricCard
+            title="Target Profit Price"
+            value={fmtMoney(metrics.targetProfitPrice)}
+            sub="The average price per piece you'd need (at your expected volume) to hit your profit goal."
+          />
+          <MetricCard
+            title="Projected Net Profit"
+            value={fmtMoney(metrics.projectedNetProfit)}
+            sub="What you'd actually pocket at your expected price and volume."
+            accent={metrics.projectedNetProfit >= 0 ? "text-emerald-600" : "text-rose-500"}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-slate-700 mb-1">Sensitivity Analysis</h2>
+        <p className="text-sm text-slate-500 mb-3">
+          See how your net profit shifts if your actual price or sales volume lands above or below expectations. Rows step price by ±10–20%; columns step units sold by ±1–2.
+        </p>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 overflow-x-auto">
+          <table className="w-full text-sm border-separate" style={{ borderSpacing: "6px" }}>
+            <thead>
+              <tr>
+                <th className="text-left text-xs font-semibold text-slate-400 p-2 align-bottom">
+                  Price ↓ &nbsp;/&nbsp; Units Sold →
+                </th>
+                {sensitivity.cols.map((c, i) => (
+                  <th key={i} className="text-center text-xs font-semibold text-slate-500 p-2 min-w-[84px]">
+                    {fmtUnits(c)} {c === 1 ? "piece" : "pieces"}
+                    {c === salesVolume && <div className="text-[10px] text-indigo-400 font-normal">expected</div>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sensitivity.rows.map((price, r) => (
+                <tr key={r}>
+                  <td className="text-xs font-semibold text-slate-500 p-2 whitespace-nowrap">
+                    {fmtMoney(price)}
+                    {price === avgPrice && <div className="text-[10px] text-indigo-400 font-normal">expected</div>}
+                  </td>
+                  {sensitivity.grid[r].map((profit, c) => (
+                    <td key={c} className={"text-center rounded-lg p-2 text-xs sm:text-sm " + cellStyles(profit, targetProfit)}>
+                      {fmtMoney(profit)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex flex-wrap gap-3 mt-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 border border-red-200 inline-block"></span> Loss</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-100 border border-slate-300 inline-block"></span> Break-even</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 border border-green-200 inline-block"></span> Profit</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-700 border border-green-800 inline-block"></span> Hits target profit goal</span>
+          </div>
+        </div>
+      </section>
+
+      <footer className="text-xs text-slate-400 pt-4 border-t border-slate-200">
+        Built for solo visual artists planning their next exhibition. Adjust the sliders above — every number on this page updates instantly.
+      </footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
